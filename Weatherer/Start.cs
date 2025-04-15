@@ -1,5 +1,5 @@
-﻿namespace Weatherer;
-
+﻿namespace Weatherer
+{
     public static class Start
     {
         public static async Task Main()
@@ -8,3 +8,6 @@
             await telegramBot.Run();
         }
     }
+}
+
+    
