@@ -15,19 +15,21 @@ namespace Weatherer
 
         private static TelegramBotClient bot;
 
-        private long? ChatId = null;
+        private long ChatId;
 
-        private string? City = null;
+        private string? City;
 
         private DateOnly Date = DateOnly.FromDateTime(DateTime.Now);
 
-        private TimeOnly Follow_Time = TimeOnly.FromDateTime(DateTime.Now);
+        private bool Following;
 
-        private string? Condition = null;
+        private TimeOnly Follow_Time;
+
+        private string? Condition;
 
         public async Task Run()
         {
-            using CancellationTokenSource cts = new CancellationTokenSource();
+            using var cts = new CancellationTokenSource();
 
             bot = new TelegramBotClient(Bot_token, cancellationToken: cts.Token);
 
@@ -35,7 +37,6 @@ namespace Weatherer
 
             bot.OnError += OnError;
             bot.OnMessage += OnMessage;
-            bot.OnUpdate += OnUpdate;
 
             Console.WriteLine($"Бот @{me.Username} успешно запущен. Нажмите Escape для завершения");
 
@@ -43,8 +44,11 @@ namespace Weatherer
             {
                 while (!cts.Token.IsCancellationRequested)
                 {
-                    await Subscription();
-                    await Task.Delay(TimeSpan.FromMinutes(1), cts.Token);
+                    if (Following == true)
+                    {
+                        await Subscription();
+                        await Task.Delay(TimeSpan.FromMinutes(1), cts.Token);
+                    }
                 }
             });
 
@@ -84,20 +88,22 @@ namespace Weatherer
             switch (command)
             {
                 case "/start":
-                    await bot.SendMessage(ChatId, 
-                        "🌞 Приветствую, я <b>Weatherer</b> — ваш персональный метеоролог.\n" + 
-                        "Список моих комманд:\n" +
-                        "1️⃣ /weather [город] - Узнать актуальный прогноз погоды в определенном городе\n" +
-                        "2️⃣ /set [город] - Задать город по умолчанию. При вызове комманды /weather без явного указания города, для прогноза погоды будет использоваться город, заданный по умолчанию\n" +
-                        "3️⃣ /remove - Убрать город, заданный по умолчанию\n" +
-                        "4️⃣ /follow [время] - подписаться на рассылку погоды в заданное время. Необходимо перед этим задать город командой /set",
+                    await bot.SendMessage(ChatId,
+                        "☀️ Приветствую, я <b>Weatherer</b> — ваш персональный метеоролог.\n" +
+                        "📋 Список моих комманд:\n" +
+                        "🌥️ Узнать погоду в в любом городе: /weather [город]\n" +
+                        "🏙️ Задать город по умолчанию. В этом случае, если не указать город, для прогноза погоды будет использоваться город, заданный по умолчанию: /set [город]\n" +
+                        "🚫 Убрать город, заданный по умолчанию: /remove\n" +
+                        "🔔 Подписаться на рассылку погоды в заданное время (необходимо перед этим задать город по умолчанию): /follow [время]\n" +
+                        "🔕 Отписаться от рассылки: /unfollow\n",
                         ParseMode.Html, 
-                        replyMarkup: new InlineKeyboardButton[][] 
+                        replyMarkup: new KeyboardButton[][] 
                         {
-                            [("Узнать погоду", "weather")],
-                            [("Задать город", "set")],
-                            [("Убрать город", "remove")]
-                        } );
+                            ["/start", "/weather"],
+                            ["/set", "/remove"],
+                            ["/follow", "/unfollow"],
+                        });
+
                     break;
 
                 case "/weather":
@@ -105,60 +111,62 @@ namespace Weatherer
 
                     if (string.IsNullOrWhiteSpace(city))
                     {
-                        await bot.SendMessage(message.Chat, "Введите название города, чтобы получить прогноз погоды");
+                        await bot.SendMessage(ChatId, "📌 Введите название города, чтобы получить прогноз погоды");
                         Condition = "weather";
                         return;
                     }
 
                     var weather = await GetWeather(city);
-                    await bot.SendMessage(message.Chat, weather);
+                    await bot.SendMessage(ChatId, weather);
                     break;
 
                 case "/set":
                     if (string.IsNullOrWhiteSpace(args))
                     {
-                        await bot.SendMessage(message.Chat, "Введите город, который хотите задать по умолчанию");
+                        await bot.SendMessage(ChatId, "📌 Введите город, который хотите задать по умолчанию");
                         Condition = "set";
                         return;
                     }
 
-                    else
-                    {
-                        City = args;
-                        await bot.SendMessage(message.Chat, $"✔️ Город по умолчанию установлен: {City}");
-                    }
+                    City = args;
+                    await bot.SendMessage(ChatId, $"✅ Город по умолчанию установлен: {City}");
+
                     break;
 
                 case "/remove":
                     City = null;
-                    await bot.SendMessage(message.Chat, $"✔️ Город по умолчанию убран");
+                    await bot.SendMessage(ChatId, $"✅ Город по умолчанию убран");
                     break;
 
                 case "/follow":
                     if (string.IsNullOrWhiteSpace(args) || !TimeOnly.TryParse(args, out var time))
                     {
-                        await bot.SendMessage(message.Chat, "Введите дату в формате hh:mm");
+                        await bot.SendMessage(ChatId, "📌 Введите дату в формате hh:mm");
                         Condition = "follow";
                         return;
                     }
 
                     if (string.IsNullOrWhiteSpace(City))
                     {
-                        await bot.SendMessage(message.Chat, "Сначала задайте город по умолчанию с помощью /set");
+                        await bot.SendMessage(ChatId, "📌 Сначала задайте город по умолчанию с помощью /set");
                         return;
                     }
 
-                    else
-                    {
-                        await bot.SendMessage(message.Chat, 
-                            "✔️ Вы подписались на рассылку\n" +
+                    await bot.SendMessage(ChatId,
+                            "✅ Вы подписались на рассылку\n" +
                             $"Теперь вы будете получать актуальный прогноз погоды в городе {City} каждый день в {time}!");
-                        Follow_Time = time;
-                    }
+                    Following = true;
+                    Follow_Time = time;
+
+                    break;
+
+                case "/unfollow":
+                    Following = false;
+                    await bot.SendMessage(ChatId, $"✅ Вы отписались от рассылки");
                     break;
 
                 default:
-                    await bot.SendMessage(message.Chat, "⚠️ Команда не найдена");
+                    await bot.SendMessage(ChatId, "⚠️ Команда не найдена");
                     break;
             }
         }
@@ -172,26 +180,29 @@ namespace Weatherer
             switch (Condition)
             {
                 case "weather":
+                    Condition = null;
                     await OnCommand("/weather", message.Text, message);
                     break;
 
                 case "set":
+                    Condition = null;
                     await OnCommand("/set", message.Text, message);
                     break;
 
+                case "follow":
+                    Condition = null;
+                    await OnCommand("/follow", message.Text, message);
+                    break;
+
                 default:
+                    Condition = null;
                     await OnCommand("/start", "", message);
                     break;
             }
-            Condition = null;
+            
         }
-        async Task OnUpdate(Update update)
-        {
-            if (update is { CallbackQuery: { } query }) 
-            {
-                Console.WriteLine(query.Data);
-            }
-        }
+
+        
 
         async Task<string> GetWeather(string city)
         {
@@ -217,8 +228,8 @@ namespace Weatherer
                 return "❌ Не удалось получить информацию о погоде";
 
 
-            return $"Погода в городе {weather.Name}:\n" +
-                   $"📅 Дата: {Date}\n" +
+            return $"🌆 Погода в городе {weather.Name}:\n" +
+                   $"🗓️ Дата: {Date}\n" +
                    $"🌡 Температура: {weather.Main.Temp}°C\n" +
                    $"💧 Влажность: {weather.Main.Humidity}%\n" +
                    $"💨 Ветер: {weather.Wind.Speed} м/с\n" + 
@@ -227,6 +238,9 @@ namespace Weatherer
 
         async Task Subscription()
         {
+            if (string.IsNullOrWhiteSpace(City))
+                return;
+
             var cur_time = TimeOnly.FromDateTime(DateTime.Now);
             if (cur_time.Hour == Follow_Time.Hour && cur_time.Minute == Follow_Time.Minute)
             {

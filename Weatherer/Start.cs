@@ -1,4 +1,6 @@
-﻿namespace Weatherer
+﻿using System;
+
+namespace Weatherer
 {
     public static class Start
     {
