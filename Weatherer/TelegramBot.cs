@@ -4,7 +4,6 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
-using static Weatherer.JsonClasses;
 
 namespace Weatherer
 {
@@ -12,9 +11,15 @@ namespace Weatherer
     {
         private const string bot_token = "7761963577:AAE3xgNxPcY2lVftInKuUy59Kis7lANgwaQ";
 
-        public const string api_key = "9801393a625e98a10027976638c32df7";
+        private const string api_key = "9801393a625e98a10027976638c32df7";
 
         private static TelegramBotClient bot;
+
+        private string? City = null;
+
+        private string Date = DateTime.Now.ToString().Split(' ').First();
+
+        private string? Condition = null;
 
         public async Task Run()
         {
@@ -57,27 +62,82 @@ namespace Weatherer
         }
         async Task OnCommand(string command, string args, Message message)
         {
-            Console.WriteLine($"Received command: {command} {args}");
+            Console.WriteLine($"Получена комманда: {command} {args}");
             switch (command)
             {
                 case "/start":
-                    await bot.SendMessage(message.Chat, "🌞 Приветствую, я <b>Weatherer</b> — ваш персональный метеоролог\nСписок моих комманд:\n/weather [город] - Узнать актуальный прогноз погоды в определенном городе. Например, /weather Ростов-на-Дону",
+                    await bot.SendMessage(message.Chat, 
+                        "🌞 Приветствую, я <b>Weatherer</b> — ваш персональный метеоролог\n" + 
+                        "Список моих комманд:\n" + 
+                        "/weather [город] - Узнать актуальный прогноз погоды в определенном городе. Например, /weather Ростов-на-Дону\n" +
+                        "/forecast [город] - Узнать прогноз погоды на несколько дней. Например, /forecast Москва\n" +
+                        "/set [город] - Задать город по умолчанию. При вызове комманд /weather и /forecast без явного указания города для прогноза погоды будет использоваться город, заданный по умолчанию\n" +
+                        "/remove - Убрать город, заданный по умолчанию",
                         ParseMode.Html, protectContent: true);
                     break;
+
                 case "/weather":
-                    var weather = await GetWeather(args);
+                    var city = string.IsNullOrWhiteSpace(args) ? City : args;
+
+                    if (string.IsNullOrWhiteSpace(city))
+                    {
+                        await bot.SendMessage(message.Chat, "Введите название города, чтобы получить прогноз погоды");
+                        Condition = "weather";
+                        return;
+                    }
+
+                    var weather = await GetWeather(city);
                     await bot.SendMessage(message.Chat, weather);
                     break;
+
+                case "/set":
+                    if (string.IsNullOrWhiteSpace(args))
+                    {
+                        await bot.SendMessage(message.Chat, "Введите город, который хотите задать по умолчанию");
+                        Condition = "set";
+                        return;
+                    }
+
+                    else
+                    {
+                        City = args;
+                        await bot.SendMessage(message.Chat, $"Город по умолчанию установлен: {City}");
+                    }
+                    break;
+
+                case "/remove":
+                    City = null;
+                    await bot.SendMessage(message.Chat, $"Город по умолчанию убран");
+                    break;
+
                 default:
-                    await bot.SendMessage(message.Chat, "К сожалению, такой команды у меня нет");
+                    await bot.SendMessage(message.Chat, "Команда не найдена");
                     break;
             }
         }
 
         async Task OnTextMessage(Message message) 
         {
-            Console.WriteLine($"Received text '{message.Text}' in {message.Chat}");
-            await OnCommand("/start", "", message); 
+            if (string.IsNullOrWhiteSpace(message.Text))
+                return;
+
+            Console.WriteLine($"Получено сообщение \"{ message.Text}\" в {message.Chat}");
+            switch (Condition)
+            {
+                case "weather":
+                    var weather = await GetWeather(message.Text);
+                    await bot.SendMessage(message.Chat, weather);
+                    break;
+
+                case "set":
+                    await OnCommand("/set", message.Text, message);
+                    break;
+
+                default:
+                    await OnCommand("/start", "", message);
+                    break;
+            }
+            Condition = null;
         }
         async Task OnUpdate(Update update)
         {
@@ -89,6 +149,7 @@ namespace Weatherer
             string url = $"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric&lang=ru";
 
             using var client = new HttpClient();
+
             var response = await client.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
@@ -96,33 +157,23 @@ namespace Weatherer
 
             var json = await response.Content.ReadAsStringAsync();
 
-            var weather = JsonSerializer.Deserialize<WeatherApiResponse>(json);
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            var weather = JsonSerializer.Deserialize<WeatherApiResponse>(json, options);
 
             if (weather == null || weather.Weather.Length == 0)
-                return "Не удалось получить информацию о погоде.";
+                return "Не удалось получить информацию о погоде";
 
-            
-            string emoji = GetWeatherEmoji(weather.Weather[0].Id);
 
-            return $"{emoji} Погода в городе {weather.Name}:\n" +
+            return $"Погода в городе {weather.Name}:\n" +
+                   $"📅 Дата: {Date}\n" +
                    $"🌡 Температура: {weather.Main.Temp}°C\n" +
                    $"💧 Влажность: {weather.Main.Humidity}%\n" +
-                   $"💨 Ветер: {weather.Wind.Speed} м/с\n" +
+                   $"💨 Ветер: {weather.Wind.Speed} м/с\n" + 
                    $"🌤 Описание: {weather.Weather[0].Description}";
         }
 
-        private string GetWeatherEmoji(int id)
-        {
-            
-            if (id >= 200 && id < 300) return "⛈";
-            if (id >= 300 && id < 400) return "🌦";
-            if (id >= 500 && id < 600) return "🌧";
-            if (id >= 600 && id < 700) return "❄";
-            if (id >= 700 && id < 800) return "🌫";
-            if (id == 800) return "☀";
-            if (id > 800) return "☁";
-            return "🌈";
-        }
+       
     }
 }
 
