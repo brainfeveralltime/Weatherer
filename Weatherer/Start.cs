@@ -1,14 +1,11 @@
-﻿using System;
-
-namespace Weatherer
+﻿namespace Weatherer
 {
-    public static class Start
+    internal class Start
     {
-        public static async Task Main()
+        static async Task Main()
         {
             TelegramBot telegramBot = new TelegramBot();
-            await telegramBot.Run();
-            
+            await telegramBot.Run(); //Запускаем бота
         }
     }
 }

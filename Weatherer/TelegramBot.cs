@@ -7,26 +7,55 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 namespace Weatherer
 {
+    /// <summary>
+    /// Телеграмм бот
+    /// </summary>
     public class TelegramBot
     {
+        /// <summary>
+        /// Токен телеграмм бота
+        /// </summary>
         private const string Bot_token = "7761963577:AAE3xgNxPcY2lVftInKuUy59Kis7lANgwaQ";
 
+        /// <summary>
+        /// API ключ для запроса к openweathermap
+        /// </summary>
         private const string Api_key = "9801393a625e98a10027976638c32df7";
 
+        /// <summary>
+        /// Клиент телеграмм бота
+        /// </summary>
         private static TelegramBotClient bot;
 
+        /// <summary>
+        /// ID чата
+        /// </summary>
         private long ChatId;
 
+        /// <summary>
+        /// Город для прогноза погоды
+        /// </summary>
         private string? City;
 
-        private DateOnly Date = DateOnly.FromDateTime(DateTime.Now);
-
+        /// <summary>
+        /// True, если пользователь подключил подписку
+        /// </summary>
         private bool Following;
 
+        /// <summary>
+        /// Время для ежедневной рассылки
+        /// </summary>
         private TimeOnly Follow_Time;
 
+        /// <summary>
+        /// Состояние бота
+        /// </summary>
         private string? Condition;
 
+        /// <summary>
+        /// Запуск бота
+        /// </summary>
+        /// <returns></returns>
         public async Task Run()
         {
             using var cts = new CancellationTokenSource();
@@ -37,8 +66,6 @@ namespace Weatherer
 
             bot.OnError += OnError;
             bot.OnMessage += OnMessage;
-
-            Console.WriteLine($"Бот @{me.Username} успешно запущен. Нажмите Escape для завершения");
 
             _ = Task.Run(async () =>
             {
@@ -52,15 +79,28 @@ namespace Weatherer
                 }
             });
 
+            Console.WriteLine($"Бот @{me.Username} успешно запущен. Нажмите Escape для завершения");
             while (Console.ReadKey(true).Key != ConsoleKey.Escape) ;
             cts.Cancel();
         }
 
+        /// <summary>
+        /// Выводит возникшие ошибки
+        /// </summary>
+        /// <param name="exception"></param>
+        /// <param name="source"></param>
+        /// <returns></returns>
         async Task OnError(Exception exception, HandleErrorSource source)
         {
             Console.WriteLine(exception);
         }
 
+        /// <summary>
+        /// Анализирует, является ли полученное сообщение командой
+        /// </summary>
+        /// <param name="message"></param>
+        /// <param name="type"></param>
+        /// <returns></returns>
         async Task OnMessage(Message message, UpdateType type)
         {
             ChatId = message.Chat.Id;
@@ -82,6 +122,14 @@ namespace Weatherer
             else
                 await OnTextMessage(message);
         }
+
+        /// <summary>
+        /// Выполняет полученную команду
+        /// </summary>
+        /// <param name="command"></param>
+        /// <param name="args"></param>
+        /// <param name="message"></param>
+        /// <returns></returns>
         async Task OnCommand(string command, string args, Message message)
         {
             Console.WriteLine($"Получена комманда: {command} {args}");
@@ -141,7 +189,7 @@ namespace Weatherer
                 case "/follow":
                     if (string.IsNullOrWhiteSpace(args) || !TimeOnly.TryParse(args, out var time))
                     {
-                        await bot.SendMessage(ChatId, "📌 Введите дату в формате hh:mm");
+                        await bot.SendMessage(ChatId, "📌 Введите дату в формате чч:мм");
                         Condition = "follow";
                         return;
                     }
@@ -171,6 +219,11 @@ namespace Weatherer
             }
         }
 
+        /// <summary>
+        /// Если бот ожидает команду, выполняет ее, иначе вызывает команду /start
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
         async Task OnTextMessage(Message message) 
         {
             if (string.IsNullOrWhiteSpace(message.Text))
@@ -199,11 +252,13 @@ namespace Weatherer
                     await OnCommand("/start", "", message);
                     break;
             }
-            
         }
 
-        
-
+        /// <summary>
+        /// Получает данные о погоде в определенном городе через openweathermap
+        /// </summary>
+        /// <param name="city"></param>
+        /// <returns></returns>
         async Task<string> GetWeather(string city)
         {
             string url = $"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={Api_key}&units=metric&lang=ru";
@@ -227,15 +282,20 @@ namespace Weatherer
             if (weather == null || weather.Weather.Length == 0)
                 return "❌ Не удалось получить информацию о погоде";
 
+            var date = DateOnly.FromDateTime(DateTime.Now);
 
-            return $"🌆 Погода в городе {weather.Name}:\n" +
-                   $"🗓️ Дата: {Date}\n" +
+            return $"🗓️ {date}\n" +
+                   $"🌆 Погода в городе {weather.Name}:\n" +
                    $"🌡 Температура: {weather.Main.Temp}°C\n" +
                    $"💧 Влажность: {weather.Main.Humidity}%\n" +
                    $"💨 Ветер: {weather.Wind.Speed} м/с\n" + 
                    $"🌤 Описание: {weather.Weather[0].Description}";
         }
 
+        /// <summary>
+        /// Прислылает пользователю, который подписался на рассылку, погоду в заданное время
+        /// </summary>
+        /// <returns></returns>
         async Task Subscription()
         {
             if (string.IsNullOrWhiteSpace(City))
@@ -248,11 +308,8 @@ namespace Weatherer
 
                 var weather = await GetWeather(City);
                 await bot.SendMessage(ChatId, weather);
-                
-                
             }
         }
-       
     }
 }
 
